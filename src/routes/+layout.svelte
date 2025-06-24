@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { redirect } from '@sveltejs/kit';
-	import { getAuth } from 'firebase/auth';
 	import { PUBLIC_API_ENDPOINT, PUBLIC_BACKEND_API_KEY } from '$env/static/public';
 	import './bootstrap.css';
 	import './styles.css';
