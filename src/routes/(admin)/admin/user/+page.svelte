@@ -58,9 +58,9 @@
 				apikey: PUBLIC_BACKEND_API_KEY
 			},
 			body: JSON.stringify({
-				id: id,
-				package_id: package_id,
-				is_active: is_active
+				id: parseInt(id),
+				package_id: parseInt(package_id),
+				is_active: is_active ? 1 : 0
 			})
 		};
 		var result = await fetch(`${PUBLIC_API_ENDPOINT}/user/update`, config);

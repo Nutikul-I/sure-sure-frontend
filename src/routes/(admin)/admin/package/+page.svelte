@@ -51,7 +51,7 @@
 					quota_limit: quota_limit,
 					amount: amount,
 					duration: duration,
-					is_active: is_active
+					is_active: is_active ? 1 : 0  // แปลง boolean เป็น int
 				})
 			});
 
