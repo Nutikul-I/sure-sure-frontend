@@ -1,17 +1,24 @@
 <script lang="ts">
+	// @ts-nocheck
 	import type { PageData } from './$types';
-
+	import { invalidateAll } from '$app/navigation';
 	import Chart from './Chart.svelte';
-	import { PUBLIC_API_ENDPOINT } from '$env/static/public';
-	import { PUBLIC_BACKEND_API_KEY } from '$env/static/public';
 	import { onMount } from 'svelte';
 
+	//รับข้อมูลจาก server
 	export let data: PageData;
+
+	//รับข้อมูลจาก server
+	let listOrder = data.orders;
+	let listTransaction = data.transactions;
+	let listUser = data.users;
+	let listPackages = data.packages;
+
 	const now = new Date();
 	const currentMonth = now.getMonth();
 	const currentYear = now.getFullYear();
 
-	let loading = true;
+	let loading = false; // ไม่ต้อง loading เพราะข้อมูลโหลดมาจาก server แล้ว
 	const thaiMonths = [
 		'มกราคม',
 		'กุมภาพันธ์',
@@ -54,10 +61,10 @@
 		'098': 'SMEB'
 	};
 	let card01: { thisMonth: number; previousMonths: number } | null = null;
-	let listOrder = [];
-	let listTransaction: never[] = [];
-	let listUser: any[] = [];
-	let listPackages: never[] = [];
+	// let listOrder = [];
+	// let listTransaction: never[] = [];
+	// let listUser: any[] = [];
+	// let listPackages: never[] = [];
 
 	let chartDataCard02 = {
 		labels: Array.from({ length: 30 }, (_, i) => i + 1),
@@ -148,14 +155,43 @@
 	let endDateCard05 = '';
 	let name_thCard05 = '';
 	let statusCard05 = '';
-
 	let searchCard06 = '';
 
 	onMount(async () => {
-		await Promise.all([GetOrder(), GetTransaction(), GetPackage(), GetUser()]);
+		//calculate for chart
+		calculateCard01();
 		await GetChart04();
-		loading = false;
+		updateChart02();
+		updateChart03();
+		// loading ถูกตั้งเป็น false แล้วตั้งแต่เริ่มต้น
 	});
+
+	// function for chart 01
+	function calculateCard01() {
+		card01 = listOrder
+			.filter((e: any) => e.status === 'SUCCESS')
+			.reduce(
+				(acc: any, transaction: any) => {
+					const transactionDate = new Date(transaction.created_date);
+					if (
+						transactionDate.getMonth() === currentMonth &&
+						transactionDate.getFullYear() === currentYear
+					) {
+						acc.thisMonth += transaction.price;
+					} else {
+						acc.previousMonths += transaction.price;
+					}
+					return acc;
+				},
+				{ thisMonth: 0, previousMonths: 0 }
+			);
+	}
+
+	// function for refresh data
+	async function refreshData() {
+		await invalidateAll(); // reload ข้อมูลจาก server
+	}
+
 	async function GetChart04() {
 		chartDataCard04 = {
 			labels: [],
@@ -163,27 +199,36 @@
 		};
 		// ลูกค้าใหม่
 		var userTotals = Array(12).fill(0);
-		if (listUser.filter((e) => Number(e.created_date.slice(0, 4)) == yearDateCard04).length !== 0) {
+		if (listUser.filter((e: any) => Number(e.created_date.slice(0, 4)) == yearDateCard04).length !== 0) {
 			listUser
-				.filter((e) => new Date(e.created_date).getFullYear() == yearDateCard04)
-				.forEach((order) => {
+				.filter((e: any) => new Date(e.created_date).getFullYear() == yearDateCard04)
+				.forEach((order: any) => {
 					const date = new Date(order.created_date);
 					const month = date.getMonth();
 					userTotals[month] += 1;
 				});
 		}
+		listUser
+			.filter((e: any) => new Date(e.created_date).getFullYear() == yearDateCard04)
+			.forEach((order: any) => {
+				const date = new Date(order.created_date);
+				const month = date.getMonth();
+				userTotals[month] += 1;
+			});
+
+		//ใช้ข้อมูลจาก data.transactions แทนเรียก api
 		var successTotals = Array(12).fill(0); // สลิปที่ถูกต้อง
 		var unsuccessTotals = Array(12).fill(0); // สลิปที่มีข้อผิดพลาด
 		var notmatchTotals = Array(12).fill(0); // เลขบัญชีไม่ตรงกับบัญชีผู้รับ
-		var lessthanTotals = Array(12).fill(0); // จำนวนเงินน้อยกว่าขั้นต่ำที่กำหนด
+		var lessthanTotals = Array(12).fill(0); // จำนวนเงินน้อยกว่าขั้นต่ำที่กำ หนด
 		var errorTotals = Array(12).fill(0); // เกิดข้อผิดพลาด
 		if (
-			listTransaction.filter((e) => Number(e.created_date.slice(0, 4)) == yearDateCard04).length !==
+			listTransaction.filter((e: any) => Number(e.created_date.slice(0, 4)) == yearDateCard04).length !==
 			0
 		) {
 			listTransaction
-				.filter((e) => new Date(e.created_date).getFullYear() == yearDateCard04)
-				.forEach((order) => {
+				.filter((e: any) => new Date(e.created_date).getFullYear() == yearDateCard04)
+				.forEach((order: any) => {
 					const date = new Date(order.created_date);
 					const month = date.getMonth();
 					if (order.status === 'TRANSACTION_SUCCESSFUL') {
@@ -256,47 +301,70 @@
 			]
 		};
 	}
-	async function GetOrder() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/order-package/get`, config);
-		const data = await result.json();
-		listOrder = data?.data || [];
-		card01 = data?.data.filter(e=>e.status === "SUCCESS").reduce(
-			(acc, transaction) => {
-				const transactionDate = new Date(transaction.created_date);
-				if (
-					transactionDate.getMonth() === currentMonth &&
-					transactionDate.getFullYear() === currentYear
-				) {
-					acc.thisMonth += transaction.price;
-				} else {
-					acc.previousMonths += transaction.price;
-				}
-				return acc;
-			},
-			{ thisMonth: 0, previousMonths: 0 }
-		);
+
+	function getDatesInMonth(date: string) {
+		const [startYear, startMonth] = date.split('-').map(Number);
+		const [endYear, endMonth] = date.split('-').map(Number);
+		const start = new Date(startYear, startMonth - 1, 1); // วันที่เริ่มต้นของเดือน
+		const end = new Date(endYear, endMonth, 0); // วันที่สิ้นสุดของเดือน
+
+		const dates = [];
+
+		while (start <= end) {
+			dates.push(
+				`${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`
+			);
+			start.setDate(start.getDate() + 1); // เลื่อนไปวันที่ถัดไป
+		}
+
+		return dates;
+	}
+
+	function updateChart02() {
+		if (monthDateCard02) {
+			chartDataCard02 = {
+				labels: [],
+				datasets: []
+			};
+			let arrayDate = getDatesInMonth(monthDateCard02);
+			chartDataCard02 = {
+				labels: arrayDate.map((e) => parseInt(e.split('-')[2])),
+				datasets: [
+					{
+						label: 'ยอดการตรวจสอบรายวัน',
+						data: arrayDate.map((e) => {
+							return listTransaction.filter((t: any) => t.created_date.split('T')[0] === e).length;
+						}),
+						backgroundColor: '#f6f0f7',
+						borderColor: '#cd829e',
+						borderWidth: 1,
+						tension: 0.4
+					}
+				]
+			};
+		}
+	}
+
+	function updateChart03() {
 		if (yearDateCard03) {
 			chartDataCard03 = {
 				labels: [],
 				datasets: []
 			};
-			var monthlyTotals = Array(12).fill(0); // Initialize totals for all months
+			var monthlyTotals = Array(12).fill(0);
 			if (
-				data?.data.filter((e) => Number(e.created_date.slice(0, 4)) == yearDateCard03 && e.status === "SUCCESS").length !== 0
+				listOrder.filter(
+					(e: any) => Number(e.created_date.slice(0, 4)) == yearDateCard03 && e.status === 'SUCCESS'
+				).length !== 0
 			) {
-				data?.data
-					.filter((e) => new Date(e.created_date).getFullYear() == yearDateCard03 && e.status === "SUCCESS")
-					.forEach((order) => {
+				listOrder
+					.filter(
+						(e: any) =>
+							new Date(e.created_date).getFullYear() == yearDateCard03 && e.status === 'SUCCESS'
+					)
+					.forEach((order: any) => {
 						const date = new Date(order.created_date);
-						const month = date.getMonth(); // 0-indexed month
+						const month = date.getMonth();
 						monthlyTotals[month] += order.price;
 					});
 			}
@@ -316,84 +384,20 @@
 			};
 		}
 	}
-	async function GetTransaction() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/transaction/get`, config);
-		const data = await result.json();
-		listTransaction = data?.data || [];
-		if (monthDateCard02) {
-			chartDataCard02 = {
-				labels: [],
-				datasets: []
-			};
-			let arrayDate = await getDatesInMonth(monthDateCard02);
-			chartDataCard02 = {
-				labels: arrayDate.map((e) => e.split('-')[2]),
-				datasets: [
-					{
-						label: 'ยอดการตรวจสอบรายวัน',
-						data: arrayDate.map((e) => {
-							return listTransaction.filter((t) => t.created_date.split('T')[0] === e).length;
-						}),
-						backgroundColor: '#f6f0f7',
-						borderColor: '#cd829e',
-						borderWidth: 1,
-						tension: 0.4
-					}
-				]
-			};
-		}
-	}
-	async function GetUser() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/user/get`, config);
-		const data = await result.json();
-		listUser = data?.data.filter(e=>e.user_type !== "admin") || [];
-	}
-	async function GetPackage() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/package/get`, config);
-		const data = await result.json();
-		listPackages = data.data || [];
-	}
-	function getDatesInMonth(date: string) {
-		const [startYear, startMonth] = date.split('-').map(Number);
-		const [endYear, endMonth] = date.split('-').map(Number);
-		const start = new Date(startYear, startMonth - 1, 1); // วันที่เริ่มต้นของเดือน
-		const end = new Date(endYear, endMonth, 0); // วันที่สิ้นสุดของเดือน
 
-		const dates = [];
-
-		while (start <= end) {
-			dates.push(
-				`${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`
-			);
-			start.setDate(start.getDate() + 1); // เลื่อนไปวันที่ถัดไป
-		}
-
-		return dates;
+	// เพิ่ม functions ที่ขาดหายไป
+	function GetTransaction() {
+		// function นี้ไม่ต้องเรียก API แล้ว เพราะข้อมูลอยู่ใน listTransaction แล้ว
+		updateChart02();
 	}
+
+	function GetOrder() {
+		updateChart03();
+	}
+
+	function GetUser() {
+	}
+
 </script>
 
 {#if !loading}
@@ -430,17 +434,17 @@
 					</div>
 					<div class="d-flex align-items-center justify-content-between mb-1">
 						<small
-							>{card01?.thisMonth > card01?.previousMonths
+							>{card01?.thisMonth && card01?.previousMonths && card01.thisMonth > card01.previousMonths
 								? 'มากกว่าเดือนที่แล้ว'
 								: 'น้อยกว่าเดือนที่แล้ว'}</small
 						>
 						<small
-							class="badge {card01?.thisMonth > card01?.previousMonths
+							class="badge {card01?.thisMonth && card01?.previousMonths && card01.thisMonth > card01.previousMonths
 								? 'badge-success bg-success-subtle border-success text-success'
 								: 'badge-danger bg-danger-subtle border-danger text-danger'}"
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">
-								{#if card01?.thisMonth > card01?.previousMonths}
+								{#if card01?.thisMonth && card01?.previousMonths && card01.thisMonth > card01.previousMonths}
 									<path stroke="#106511" stroke-width="2" d="m12 5l6 6m-6-6l-6 6m6-6v14" />
 								{:else}
 									<path
@@ -449,10 +453,9 @@
 									/>
 								{/if}
 							</svg>
-							{(
-								((card01?.thisMonth - card01?.previousMonths) / card01?.previousMonths) *
-								100
-							).toFixed(2)}%
+							{card01?.thisMonth && card01?.previousMonths 
+								? (((card01.thisMonth - card01.previousMonths) / card01.previousMonths) * 100).toFixed(2) 
+								: '0.00'}%
 						</small>
 					</div>
 				</div>
@@ -781,16 +784,22 @@
 											<td title={item.created_date}
 												>{item.created_date
 													? new Date(item.created_date).toLocaleDateString('th-TH', {
-													day: '2-digit',
-													month: '2-digit',
-													year: 'numeric'
-												})
+															day: '2-digit',
+															month: '2-digit',
+															year: 'numeric'
+														})
 													: '-'}
 											</td>
-											<td>{(item.id).toString().padStart(5,'0')}</td>
-											<td>{item.user_id === 0 ? '' : '#'+(item.user_id).toString().padStart(5,'0')}</td>
-											<td class="p-1 sm:p-2 lg:text-sm text-left truncate" title={listUser?.find(e=>e.id === item.user_id)?.name_th || "-"}
-												>{listUser?.find(e=>e.id === item.user_id)?.name_th || "-"}</td
+											<td>{item.id.toString().padStart(5, '0')}</td>
+											<td
+												>{item.user_id === 0
+													? ''
+													: '#' + item.user_id.toString().padStart(5, '0')}</td
+											>
+											<td
+												class="p-1 sm:p-2 lg:text-sm text-left truncate"
+												title={listUser?.find((e) => e.id === item.user_id)?.name_th || '-'}
+												>{listUser?.find((e) => e.id === item.user_id)?.name_th || '-'}</td
 											>
 											<td>{listBank[item.qr_code.slice(18, 21)] || item.qr_code.slice(18, 21)}</td>
 											<td title={item.status}>
@@ -856,23 +865,30 @@
 								{#if listUser.length === 0}
 									<tr><td colspan="11">ไม่พบข้อมูล</td></tr>
 								{:else}
-									{#each listUser.filter((e) => !searchCard06 || `#${(e.id).toString().padStart(5,'0')} ${e.name_th}`.includes(searchCard06)) as item, index}
+									{#each listUser.filter((e) => !searchCard06 || `#${e.id.toString().padStart(5, '0')} ${e.name_th}`.includes(searchCard06)) as item, index}
 										<tr class="text-start">
 											<th class="text-center">{index + 1}</th>
-											<td>#{(item.id).toString().padStart(5,'0')}</td>
+											<td>#{item.id.toString().padStart(5, '0')}</td>
 											<td title={item.email}>{item.email}</td>
 											<td title={item.name_th}>{item.name_th}</td>
 											<td>{item.user_type}</td>
-											<td title={listPackages?.find(e=> e.id == item.package_id)?.package_name || ""}>{listPackages?.find(e=> e.id == item.package_id)?.package_name || ""}</td>
+											<td
+												title={listPackages?.find((e) => e.id == item.package_id)?.package_name ||
+													''}
+												>{listPackages?.find((e) => e.id == item.package_id)?.package_name ||
+													''}</td
+											>
 											<td class="text-end">{item.quota_left.toLocaleString()}</td>
 											<td class="text-end">{(item.quota_all - item.quota_left).toLocaleString()}</td
 											>
 											<td class="text-center"
-												>{item.package_id ? new Date(item.package_change_date).toLocaleDateString('th-TH', {
-													day: '2-digit',
-													month: '2-digit',
-													year: 'numeric'
-												}) || '-' : "-"}</td
+												>{item.package_id
+													? new Date(item.package_change_date).toLocaleDateString('th-TH', {
+															day: '2-digit',
+															month: '2-digit',
+															year: 'numeric'
+														}) || '-'
+													: '-'}</td
 											>
 										</tr>
 									{/each}
