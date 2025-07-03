@@ -1,14 +1,15 @@
 <script lang="ts">
 	import Swal from 'sweetalert2';
 	import { onMount } from 'svelte';
-
+	import { enhance } from '$app/forms';
+	import { invalidateAll, goto } from '$app/navigation';
 	import Switch from '$lib/components/ui/switch/Switch2.svelte';
 	import type { PackageData } from './+page.server.js';
-	import cookie from 'cookie';
-	import { PUBLIC_API_ENDPOINT } from '$env/static/public';
-	import { PUBLIC_BACKEND_API_KEY } from '$env/static/public';
 
-	let listPackages: PackageData[] = [];
+	export let data;
+	export let form;
+
+	let listPackages: PackageData[] = data.packages || [];
 	let search = '';
 
 	let id = '';
@@ -17,93 +18,61 @@
 	let quota_limit = '';
 	let amount = '';
 	let duration = '';
-	let is_active = false;
-	onMount(async () => {
-		await GetPackage();
-	});
-	async function GetPackage() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/package/get`, config);
-		const data = await result.json();
-		listPackages =
-			data?.data.filter((e) => !search || `${e.id} ${e.package_name}`.includes(search)) || [];
-	}
-	async function CreateUpdatePackage() {
-		try {
-			const response = await fetch(`${PUBLIC_API_ENDPOINT}/package/${id ? 'update' : 'create'}`, {
-				method: id ? 'PUT' : 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'ngrok-skip-browser-warning': 'true',
-					apikey: PUBLIC_BACKEND_API_KEY
-				},
-				body: JSON.stringify({
-					id: id || null,
-					package_name: package_name,
-					package_price: package_price,
-					quota_limit: quota_limit,
-					amount: amount,
-					duration: duration,
-					is_active: is_active ? 1 : 0  // แปลง boolean เป็น int
-				})
-			});
+	let is_active = 1; // ใช้ number: 1 = active, 0 = inactive
+	let isSubmitting = false;
+	
+	// Helper variable สำหรับ Switch component
+	let isActiveSwitch = true;
+	
+	// Reactive statement เพื่อ sync is_active กับ isActiveSwitch
+	$: is_active = isActiveSwitch ? 1 : 0;
 
-			if (response.ok) {
-				Swal.fire({
-					width: '26em',
-					imageUrl:
-						'https://img2.pic.in.th/pic/download-2a2d3a381ecc577a3.png',
-					imageWidth: 72,
-					imageHeight: 72,
-					imageAlt: 'Custom image',
-					showCloseButton: true,
-					title: 'สำเร็จ',
-					text: `${id ? 'แก้ไข' : 'เพิ่ม'}แพ็กเกจสำเร็จ`,
-					confirmButtonText: 'ตกลง',
-					customClass: {
-						container: 'mb-0 pt-2 text-md',
-						image: 'mb-2',
-						title: 'text-xl pt-1',
-						htmlContainer: 'text-md pt-2',
-						actions: 'w-100 px-3 mt-2',
-						confirmButton: 'btn btn-primary bg-primary text-white w-100'
-					}
-				}).then(() => {
-					window.location.reload();
-				});
-			} else {
-				Swal.fire({
-					width: '26em',
-					imageUrl:
-						'https://img5.pic.in.th/file/secure-sv1/download-15556b299eaa25ad1.png',
-					imageWidth: 72,
-					imageHeight: 72,
-					imageAlt: 'Custom image',
-					showCloseButton: true,
-					title: 'เกิดข้อผิดพลาด',
-					text: 'กรุณาลองใหม่อีกครั้ง',
-					confirmButtonText: 'ตกลง',
-					customClass: {
-						container: 'mb-0 pt-2 text-md',
-						image: 'mb-2',
-						title: 'text-xl pt-1',
-						htmlContainer: 'text-md pt-2',
-						actions: 'w-100 px-3 mt-2',
-						confirmButton: 'btn btn-primary bg-primary text-white w-100'
-					}
-				});
-			}
-		} catch (error) {
-			console.error('Error:', error);
-			throw error;
+	// Reactive statement เพื่อ update listPackages เมื่อ data เปลี่ยน
+	$: listPackages = data.packages?.filter((e: PackageData) => 
+		!search || `${e.id} ${e.package_name}`.includes(search)
+	) || [];
+
+	onMount(async () => {
+		// Initial load handled by reactive statement above
+	});
+
+	function filterPackages() {
+		// Trigger reactive update by reassigning search value
+		search = search;
+	}
+
+	function clearSearch() {
+		search = '';
+	}
+
+	function openModal(item?: PackageData) {
+		if (item) {
+			id = item.id.toString();
+			package_name = item.package_name;
+			package_price = item.package_price.toString();
+			quota_limit = item.quota_limit.toString();
+			amount = item.amount.toString();
+			duration = item.duration.toString();
+			is_active = item.is_active;
+			isActiveSwitch = item.is_active === 1;
+		} else {
+			id = '';
+			package_name = '';
+			package_price = '';
+			quota_limit = '';
+			amount = '';
+			duration = '';
+			is_active = 1;
+			isActiveSwitch = true;
 		}
+		
+		const modal = document.getElementById('create-update') as HTMLDialogElement;
+		modal?.showModal();
+	}
+
+	function closeModal() {
+		const modal = document.getElementById('create-update') as HTMLDialogElement;
+		modal?.close();
 	}
 </script>
 
@@ -117,28 +86,15 @@
 				class="form-control w-72 me-2"
 				bind:value={search}
 			/>
-			<button class="btn btn-primary bg-primary me-2" on:click={GetPackage}>ค้นหา</button>
+			<button class="btn btn-primary bg-primary me-2" on:click={filterPackages}>ค้นหา</button>
 			<button
 				class="btn btn-outline"
-				on:click={() => {
-					search = '';
-					GetPackage();
-				}}>ล้าง</button
+				on:click={clearSearch}>ล้าง</button
 			>
 		</div>
 		<button
 			class="btn btn-primary bg-primary me-2"
-			on:click={() => {
-				id = '';
-				package_name = '';
-				package_price = '';
-				quota_limit = '';
-				amount = '';
-				duration = '';
-				is_active = true;
-				const modal = document.getElementById('create-update');
-				modal.showModal();
-			}}>สร้างแพ็กเก็จ</button
+			on:click={() => openModal()}>สร้างแพ็กเก็จ</button
 		>
 	</div>
 	<div class="table-responsive">
@@ -163,33 +119,23 @@
 					{#each listPackages as item, index}
 						<tr class="text-start">
 							<td class="text-center">{index + 1}</td>
-							<td>{item.id.toString().padStart(5, '0') || '-'}</td>
+							<td>{item.id.toString().padStart(5, '0')}</td>
 							<td title={item.package_name}>{item.package_name}</td>
 							<td class="text-end">{item.package_price.toFixed(2)}</td>
-							<td class="text-end">{(item.quota_limit || '-').toLocaleString()}</td>
+							<td class="text-end">{item.quota_limit.toLocaleString()}</td>
 							<td class="text-end"
 								>{item.amount === 0 ? 'Unlimited' : item.amount.toLocaleString()}</td
 							>
 							<td class="text-center">{item.duration}</td>
 							<td class="text-center"
 								><small
-									class="px-2 rounded-pill {item.is_active ? 'badge-success' : 'badge-danger'}"
-									>{item.is_active ? 'ACTIVE' : 'DEACTIVE'}</small
+									class="px-2 rounded-pill {item.is_active === 1 ? 'badge-success' : 'badge-danger'}"
+									>{item.is_active === 1 ? 'ACTIVE' : 'DEACTIVE'}</small
 								></td
 							>
 							<td class="p-1 sm:p-2">
 								<svg
-									on:click={() => {
-										id = item.id;
-										package_name = item.package_name;
-										package_price = item.package_price;
-										quota_limit = item.quota_limit;
-										amount = item.amount;
-										duration = item.duration;
-										is_active = item.is_active;
-										const modal = document.getElementById('create-update');
-										modal.showModal();
-									}}
+									on:click={() => openModal(item)}
 									class="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer"
 									aria-hidden="true"
 									xmlns="http://www.w3.org/2000/svg"
@@ -251,14 +197,78 @@
 
 <dialog id="create-update" class="modal px-0">
 	<div class="modal-box bg-white w-11/12 max-w-md p-3">
+		<form 
+			method="POST" 
+			action="?/createUpdate"
+			use:enhance={() => {
+				isSubmitting = true;
+				return async ({ result, update }) => {
+					isSubmitting = false;
+					if (result.type === 'success') {
+						// ปิด modal ก่อน
+						closeModal();
+						
+						// Refresh ข้อมูลโดยการ invalidate load function
+						await invalidateAll();
+						
+						// แสดง success message
+						Swal.fire({
+							width: '26em',
+							imageUrl: 'https://img2.pic.in.th/pic/download-2a2d3a381ecc577a3.png',
+							imageWidth: 72,
+							imageHeight: 72,
+							imageAlt: 'Custom image',
+							showCloseButton: true,
+							title: 'สำเร็จ',
+							text: (typeof result.data?.message === 'string' ? result.data.message : 'บันทึกข้อมูลสำเร็จ'),
+							confirmButtonText: 'ตกลง',
+							customClass: {
+								container: 'mb-0 pt-2 text-md',
+								image: 'mb-2',
+								title: 'text-xl pt-1',
+								htmlContainer: 'text-md pt-2',
+								actions: 'w-100 px-3 mt-2',
+								confirmButton: 'btn btn-primary bg-primary text-white w-100'
+							}
+						});
+					} else if (result.type === 'failure') {
+						// แสดง error message (ไม่ปิด modal เพื่อให้แก้ไขข้อมูล)
+						Swal.fire({
+							width: '26em',
+							imageUrl: 'https://img5.pic.in.th/file/secure-sv1/download-15556b299eaa25ad1.png',
+							imageWidth: 72,
+							imageHeight: 72,
+							imageAlt: 'Custom image',
+							showCloseButton: true,
+							title: 'เกิดข้อผิดพลาด',
+							text: (typeof result.data?.message === 'string' ? result.data.message : 'กรุณาลองใหม่อีกครั้ง'),
+							confirmButtonText: 'ตกลง',
+							customClass: {
+								container: 'mb-0 pt-2 text-md',
+								image: 'mb-2',
+								title: 'text-xl pt-1',
+								htmlContainer: 'text-md pt-2',
+								actions: 'w-100 px-3 mt-2',
+								confirmButton: 'btn btn-primary bg-primary text-white w-100'
+							}
+						});
+					}
+				};
+			}}
+		>
 			<h4 class="h4 fw-bold text-primary">{id ? 'แก้ไข' : 'เพิ่ม'}แพ็กเก็จ</h4>
+			
+			<input type="hidden" name="id" bind:value={id} />
+			
 			<label class="label">
 				<span class="label-text text-black w-2/5">ชื่อแพ็กเก็จ:</span>
 				<input
 					type="text"
+					name="package_name"
 					class="form-control"
 					bind:value={package_name}
 					maxlength="250"
+					required
 				/>
 			</label>
 
@@ -266,55 +276,82 @@
 				<span class="label-text text-black w-2/5">ราคา:</span>
 				<input
 					type="number"
+					name="package_price"
 					class="form-control"
 					bind:value={package_price}
+					min="0"
+					step="0.01"
+					required
 				/>
 			</label>
+			
 			<label class="label">
 				<span class="label-text text-black w-2/5">โค้วต้าสูงสุด:</span>
 				<input
 					type="number"
+					name="quota_limit"
 					class="form-control"
 					bind:value={quota_limit}
+					min="0"
+					required
 				/>
 			</label>
+			
 			<label class="label cursor-pointer bg-white flex">
 				<span class="label-text text-black w-2/5">สถานะ</span>
 				<div class="w-80">
+					<input 
+						type="hidden" 
+						name="is_active" 
+						value={is_active === 1 ? 'true' : 'false'} 
+					/>
 					<Switch
-						bind:checked={is_active}
-						on:change={(e) => {
-							is_active = e.target.checked;
-						}}
+						bind:checked={isActiveSwitch}
 					/>
 				</div>
 			</label>
+			
 			<label class="label">
 				<span class="label-text text-black w-2/5">จำนวนการขาย:</span>
 				<input
 					type="number"
+					name="amount"
 					class="form-control"
 					bind:value={amount}
+					min="0"
+					required
 				/>
 			</label>
+			
 			<label class="label">
 				<span class="label-text text-black w-2/5">จำนวนวันใช้งาน:</span>
 				<input
 					type="number"
+					name="duration"
 					class="form-control"
 					bind:value={duration}
+					min="1"
+					required
 				/>
 			</label>
 
 			<div class="modal-action">
-				<form method="dialog" class="flex space-x-2">
-					<button class="btn border border-gray-500 text-black">ปิด</button>
-					<button
-						class="btn bg-primary text-white btn-primary hover:bg-[#050680]"
-						on:click={CreateUpdatePackage}>บันทึก</button
-					>
-				</form>
+				<button 
+					type="button" 
+					class="btn border border-gray-500 text-black"
+					on:click={closeModal}
+				>
+					ปิด
+				</button>
+				<button
+					type="submit"
+					class="btn bg-primary text-white btn-primary hover:bg-[#050680]"
+					disabled={isSubmitting}
+				>
+					{isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
+				</button>
 			</div>
+		</form>
 	</div>
 </dialog>
 
