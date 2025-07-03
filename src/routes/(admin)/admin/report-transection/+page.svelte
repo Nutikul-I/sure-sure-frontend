@@ -1,11 +1,13 @@
 <script lang="ts">
-	import type { TransactionandBankResponse } from './+page.server';
-
-	let transactionandBankResponseData: TransactionandBankResponse[] = [];
-	import cookie from 'cookie';
-	import { PUBLIC_API_ENDPOINT } from '$env/static/public';
-	import { onMount } from 'svelte';
-	import { PUBLIC_BACKEND_API_KEY } from '$env/static/public';
+	export let data: {
+		listTransaction: any[],
+		listUser: any[],
+		startDate: string,
+		endDate: string,
+		name_th: string,
+		status: string
+	};
+	let { listTransaction, listUser, startDate, endDate, name_th, status } = data;
 
 	let listBank = {
 		'002': 'BBL',
@@ -34,60 +36,21 @@
 		'080': 'SMTB',
 		'098': 'SMEB'
 	};
-	let listTransaction: string | any[] = [];
-	let listUser = [];
-	let startDate = '';
-	let endDate = '';
-	let name_th = '';
-	let status = '';
-	onMount(async () => {
-		await Promise.all([GetTransaction(), GetUser()]);
-	});
-	async function GetTransaction() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/transaction/get`, config);
-		const data = await result.json();
-		listTransaction = data?.data
-  .filter(e => !name_th || e.name_th.includes(name_th))
-  .filter(e => !status || e.status === status)
-  .filter(e => 
-    (!startDate || new Date(e.created_date) >= new Date(`${startDate}T00:00:00.000Z`)) && 
-    (!endDate || new Date(e.created_date) <= new Date(`${endDate}T23:59:59.000Z`))
-  ) || [];
-	}async function GetUser() {
-		const config = {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true',
-				apikey: PUBLIC_BACKEND_API_KEY
-			}
-		};
-		const result = await fetch(`${PUBLIC_API_ENDPOINT}/user/get`, config);
-		const data = await result.json();
-		listUser = data?.data || [];
-	}
 </script>
 
 <div class="p-3">
 	<h4 class="h4 fw-bold">รายงานธุรกรรม</h4>
-	<div class="d-flex flex-wrap">
-		<input type="date" class="form-control w-56 me-2 mb-2" maxlength="100" bind:value={startDate} />
-		<input type="date" class="form-control w-56 me-2 mb-2" maxlength="100" bind:value={endDate} />
+	<form method="GET" class="d-flex flex-wrap mb-3">
+		<input type="date" class="form-control w-56 me-2 mb-2" name="startDate" value={startDate} />
+		<input type="date" class="form-control w-56 me-2 mb-2" name="endDate" value={endDate} />
 		<input
 			type="text"
 			placeholder="ชื่อลูกค้า"
 			class="form-control w-56 me-2 mb-2"
-			bind:value={name_th}
+			name="name_th"
+			value={name_th}
 		/>
-		<select class="form-control w-56 me-2 mb-2" bind:value={status}>
+		<select class="form-control w-56 me-2 mb-2" name="status" bind:value={status}>
 			<option value="">ทั้งหมด</option>
 			<option value="TRANSACTION_SUCCESSFUL">TRANSACTION SUCCESSFUL</option>
 			<option value="TRANSACTION_UNSUCCESSFUL">TRANSACTION UNSUCCESSFUL</option>
@@ -95,18 +58,9 @@
 			<option value="AMOUNT_LESS_THAN_MINIMUM">AMOUNT LESS THAN MINIMUM</option>
 			<option value="ERROR">ERROR</option>
 		</select>
-		<button class="btn btn-primary bg-primary me-2 mb-2" on:click={GetTransaction}>ค้นหา</button>
-		<button
-			class="btn btn-outline mb-2"
-			on:click={() => {
-				startDate = '';
-				endDate = '';
-				name_th = '';
-				status = '';
-				GetTransaction();
-			}}>ล้าง</button
-		>
-	</div>
+		<button class="btn btn-primary bg-primary me-2 mb-2" type="submit">ค้นหา</button>
+		<a href="" class="btn btn-outline mb-2">ล้าง</a>
+	</form>
 	<div class="table-responsive mb-3">
 		<table class="table table-hover">
 			<thead>
